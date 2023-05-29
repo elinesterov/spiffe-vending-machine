@@ -1,8 +1,7 @@
 package cmd
 
 import (
-	"fmt"
-
+	"github.com/elinesterov/spiffe-vending-machine/pkg/common/version"
 	"github.com/spf13/cobra"
 )
 
@@ -15,7 +14,7 @@ var versionCmd = &cobra.Command{
 	Short: "Print the version number of svmctl",
 	Long:  `Print the version number of SPIFFE Vending Machine CLI`,
 	Run: func(cmd *cobra.Command, args []string) {
-		// TODO: Update to a proper mechanism of verisoning
-		fmt.Println("v.0.0.1")
+		v := version.Version()
+		cmd.Printf("SPIFFE Vending Machine CLI %s\n", v)
 	},
 }
