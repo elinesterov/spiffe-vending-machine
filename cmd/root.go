@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"path/filepath"
 
 	"github.com/elinesterov/spiffe-vending-machine/pkg/agent"
 	"github.com/spf13/cobra"
@@ -19,6 +20,7 @@ var (
 	c                agent.Config
 	Log              *zap.Logger
 	SpiffeSocketPath string
+	Debug            bool
 )
 
 var rootCmd = &cobra.Command{
@@ -46,13 +48,23 @@ var rootCmd = &cobra.Command{
 	// Initialize Logger and check SpiifeSocketPath
 	PreRunE: func(cmd *cobra.Command, args []string) error {
 		var err error
-		Log, err = zap.NewProduction()
+
+		if Debug {
+			Log, err = zap.NewProduction()
+		} else {
+			Log, err = zap.NewDevelopment()
+		}
+
 		if err != nil {
 			return err
 		}
 
-		if SpiffeSocketPath == "" {
-			return fmt.Errorf("SPIFFE Socket Path is required")
+		socketDir := filepath.Dir(SpiffeSocketPath)
+		if _, err := os.Stat(socketDir); os.IsNotExist(err) {
+			err = os.MkdirAll(socketDir, 0755)
+			if err != nil {
+				return fmt.Errorf("failed to create SPIFFE Socket Path directory: %s, error: %v", socketDir, err)
+			}
 		}
 
 		return nil
@@ -68,4 +80,5 @@ func Execute() {
 
 func init() {
 	rootCmd.PersistentFlags().StringVarP(&SpiffeSocketPath, "spiffe-socket-path", "s", DefaultSocketPath, "SPIFFE Socket Path")
+	rootCmd.PersistentFlags().BoolVarP(&Debug, "debug", "d", false, "Enable debug logging")
 }
