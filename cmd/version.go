@@ -15,6 +15,6 @@ var versionCmd = &cobra.Command{
 	Long:  `Print the version number of SPIFFE Vending Machine CLI`,
 	Run: func(cmd *cobra.Command, args []string) {
 		v := version.Version()
-		cmd.Printf("SPIFFE Vending Machine CLI %s\n", v)
+		cmd.Printf("SPIFFE Vending Machine CLI version: %s\n", v)
 	},
 }

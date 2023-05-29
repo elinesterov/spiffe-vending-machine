@@ -28,8 +28,6 @@ var rootCmd = &cobra.Command{
 	Short: "SPIFFE Vending Machine CLI",
 	Long:  `SPIFFE Vending Machine CLI is a tool for managing SPIFFE Vending Machine.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		// Do some stuff here
-		cmd.Print("SPIFFE Vending Machine CLI")
 		c.Log = Log
 		c.BindAddress = &net.UnixAddr{
 			Name: SpiffeSocketPath,
@@ -50,9 +48,9 @@ var rootCmd = &cobra.Command{
 		var err error
 
 		if Debug {
-			Log, err = zap.NewProduction()
-		} else {
 			Log, err = zap.NewDevelopment()
+		} else {
+			Log, err = zap.NewProduction()
 		}
 
 		if err != nil {
