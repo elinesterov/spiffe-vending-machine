@@ -21,4 +21,4 @@
 go.work
 
 # Build artifacts
-./bin/
+/bin
