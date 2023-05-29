@@ -33,6 +33,7 @@ func New(c Config) *Endpoints {
 	}
 
 	workloadAPIServer := c.newWorkloadAPIServer(workload.Config{
+		Log:         c.Log.Named("workload_api_server"),
 		TrustDomain: c.TrustDomain,
 	})
 
@@ -61,7 +62,7 @@ func (e *Endpoints) ListenAndServe(ctx context.Context) error {
 	// to listen.
 	e.addr = l.Addr()
 
-	e.log.Info("Starting Workload and SDS APIs",
+	e.log.Info("Starting Workload API",
 		zap.String("network", e.addr.Network()),
 		zap.String("address", e.addr.String()),
 	)
@@ -72,7 +73,7 @@ func (e *Endpoints) ListenAndServe(ctx context.Context) error {
 	select {
 	case err = <-errChan:
 	case <-ctx.Done():
-		e.log.Info("Stopping SPIFFE Workload and APIs")
+		e.log.Info("Stopping SPIFFE Workload API")
 		server.Stop()
 		err = <-errChan
 		if errors.Is(err, grpc.ErrServerStopped) {

@@ -2,7 +2,6 @@ package workload
 
 import (
 	"context"
-	"time"
 
 	"github.com/spiffe/go-spiffe/v2/proto/spiffe/workload"
 	"github.com/spiffe/go-spiffe/v2/spiffeid"
@@ -10,6 +9,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
+
+var ErrNotImplemented = status.Errorf(codes.Unimplemented, "Under Construction")
 
 type Config struct {
 	TrustDomain spiffeid.TrustDomain
@@ -46,24 +47,16 @@ func (h *Handler) FetchJWTSVID(ctx context.Context, req *workload.JWTSVIDRequest
 
 	// TODO: implement fake fetch jwt svid
 
-	return &workload.JWTSVIDResponse{}, status.Errorf(codes.Unimplemented, "not implemented")
+	return nil, ErrNotImplemented
 }
 
 // FetchJWTBundles processes request for JWT bundles
 func (h *Handler) FetchJWTBundles(req *workload.JWTBundlesRequest, stream workload.SpiffeWorkloadAPI_FetchJWTBundlesServer) error {
 	h.c.Log.Debug("Received JWT bundles request")
-	ctx := stream.Context()
 
 	// TODO: figure out streaming shortcut here
 
-	for {
-		select {
-		case <-time.After(time.Millisecond * 10):
-			return status.Errorf(codes.Unimplemented, "not implemented")
-		case <-ctx.Done():
-			return nil
-		}
-	}
+	return ErrNotImplemented
 }
 
 // ValidateJWTSVID processes request for JWT-SVID validation
@@ -81,38 +74,22 @@ func (h *Handler) ValidateJWTSVID(ctx context.Context, req *workload.ValidateJWT
 
 	// TODO: get bundles and validate
 
-	return &workload.ValidateJWTSVIDResponse{}, status.Errorf(codes.Unimplemented, "not implemented")
+	return nil, ErrNotImplemented
 }
 
 // FetchX509SVID processes request for a x509 SVID. In case of multiple fetched SVIDs with same hint, the SVID that has the oldest
 // associated entry will be returned.
 func (h *Handler) FetchX509SVID(_ *workload.X509SVIDRequest, stream workload.SpiffeWorkloadAPI_FetchX509SVIDServer) error {
 	h.c.Log.Debug("Received X509 SVID request")
-	ctx := stream.Context()
 
 	// TODO: implement fake SVID fetching
-	for {
-		select {
-		case <-time.After(time.Millisecond * 10):
-			return status.Errorf(codes.Unimplemented, "not implemented")
-		case <-ctx.Done():
-			return nil
-		}
-	}
+	return ErrNotImplemented
 }
 
 // FetchX509Bundles processes request for x509 bundles
 func (h *Handler) FetchX509Bundles(_ *workload.X509BundlesRequest, stream workload.SpiffeWorkloadAPI_FetchX509BundlesServer) error {
 	h.c.Log.Debug("Received X509 bundles request")
-	ctx := stream.Context()
 
 	// TODO imlement fake bundle fetching
-	for {
-		select {
-		case <-time.After(time.Millisecond * 10):
-			return status.Errorf(codes.Unimplemented, "not implemented")
-		case <-ctx.Done():
-			return nil
-		}
-	}
+	return ErrNotImplemented
 }
