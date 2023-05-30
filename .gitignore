@@ -22,3 +22,6 @@ go.work
 
 # Build artifacts
 /bin
+
+# Dev machine artifacts
+.DS_Store
