@@ -168,27 +168,10 @@ func (ca *CA) SetJWTKey(jwtKey *JWTKey) {
 
 func (ca *CA) SignWorkloadX509SVID(ctx context.Context, params WorkloadX509SVIDParams) ([]*x509.Certificate, error) {
 
-	// TODO: we probably don't need this because we won't use chain
-	// x509CA, caChain, err := ca.getX509CA()
-	// if err != nil {
-	// 	return nil, err
-	// }
 	x509CA := ca.X509CA()
 	if ca.x509CA == nil {
 		return nil, errors.New("X509 CA is not available for signing")
 	}
-
-	// template, err := BuildWorkloadX509SVIDTemplate(ca.c.TrustDomain, ca.x509CA.Certificate, WorkloadX509SVIDParams{
-	// 	// ParentChain: caChain,
-	// 	PublicKey: params.PublicKey,
-	// 	SPIFFEID:  params.SPIFFEID,
-	// 	DNSNames:  params.DNSNames,
-	// 	TTL:       params.TTL,
-	// 	Subject:   params.Subject,
-	// })
-	// if err != nil {
-	// 	return nil, err
-	// }
 
 	if params.SPIFFEID.IsZero() {
 		return nil, errors.New("invalid X509-SVID ID: cannot be empty")
@@ -226,7 +209,10 @@ func (ca *CA) SignWorkloadX509SVID(ctx context.Context, params WorkloadX509SVIDP
 	if params.Subject.String() != "" {
 		template.Subject = params.Subject
 	} else {
-		template.Subject = DefaultX509SVIDSubject()
+		template.Subject = pkix.Name{
+			Country:      []string{"US"},
+			Organization: []string{"SPIFFE Vending Machine"},
+		}
 	}
 
 	// Explicitly set the AKI on the signed certificate, otherwise it won't be
@@ -251,16 +237,6 @@ func (ca *CA) SignWorkloadJWTSVID(ctx context.Context, params WorkloadJWTSVIDPar
 	if jwtKey == nil {
 		return "", errors.New("JWT key is not available for signing")
 	}
-
-	// claims, err := BuildWorkloadJWTSVIDClaims(ctx, WorkloadJWTSVIDParams{
-	// 	SPIFFEID: params.SPIFFEID,
-	// 	Audience: params.Audience,
-	// 	TTL:      params.TTL,
-	// 	// ExpirationCap: jwtKey.NotAfter,
-	// }, jwtKey.NotAfter)
-	// if err != nil {
-	// 	return "", err
-	// }
 
 	params.Audience = dropEmptyValues(params.Audience)
 
@@ -303,15 +279,6 @@ func (ca *CA) SignWorkloadJWTSVID(ctx context.Context, params WorkloadJWTSVIDPar
 	return token, nil
 }
 
-// func (ca *CA) getX509CA() (*X509CA, []*x509.Certificate, error) {
-// 	ca.mu.RLock()
-// 	defer ca.mu.RUnlock()
-// 	if ca.x509CA == nil {
-// 		return nil, nil, errors.New("X509 CA is not available for signing")
-// 	}
-// 	return ca.x509CA, ca.x509CAChain, nil
-// }
-
 func (ca *CA) signX509SVID(x509CA *X509CA, template *x509.Certificate) ([]*x509.Certificate, error) {
 	x509SVID, err := x509util.CreateCertificate(template, x509CA.Certificate, template.PublicKey, x509CA.Signer)
 	if err != nil {
@@ -347,4 +314,56 @@ func (ca *CA) signJWTSVID(jwtKey *JWTKey, claims map[string]interface{}) (string
 	}
 
 	return signedToken, nil
+}
+
+func computeX509SVIDLifetime(clock clock.Clock, parentChain []*x509.Certificate, ttl time.Duration) (notBefore, notAfter time.Time) {
+	if ttl <= 0 {
+		ttl = DefaultX509SVIDTTL
+	}
+	return computeCappedLifetime(clock, ttl, parentChainExpiration(parentChain))
+}
+
+func computeCappedLifetime(clk clock.Clock, ttl time.Duration, expirationCap time.Time) (notBefore, notAfter time.Time) {
+	now := clk.Now()
+	notBefore = now.Add(-NotBeforeCushion)
+	notAfter = now.Add(ttl)
+	if !expirationCap.IsZero() && notAfter.After(expirationCap) {
+		notAfter = expirationCap
+	}
+	return notBefore, notAfter
+}
+
+func parentChainExpiration(parentChain []*x509.Certificate) time.Time {
+	var expiration time.Time
+	if len(parentChain) > 0 && !parentChain[0].NotAfter.IsZero() {
+		expiration = parentChain[0].NotAfter
+	}
+	return expiration
+}
+
+func dropEmptyValues(ss []string) []string {
+	next := 0
+	for _, s := range ss {
+		if s != "" {
+			ss[next] = s
+			next++
+		}
+	}
+	ss = ss[:next]
+	return ss
+}
+
+func verifyTrustDomainMemberID(trustDomain spiffeid.TrustDomain, id spiffeid.ID) error {
+
+	// Verify the SPIFFE ID is a member of the trust domain
+	if !id.MemberOf(trustDomain) {
+		return fmt.Errorf("invalid X509-SVID ID: %q is not a member of %q", id, trustDomain)
+	}
+
+	// Verify the SPIFFE ID path is not empty
+	if id.Path() == "" {
+		return fmt.Errorf("invalid X509-SVID ID: missing SPIFFE ID path")
+	}
+
+	return nil
 }
