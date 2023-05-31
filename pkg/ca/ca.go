@@ -14,6 +14,7 @@ import (
 	"github.com/andres-erbsen/clock"
 	"github.com/spiffe/go-spiffe/v2/spiffeid"
 	"github.com/spiffe/spire/pkg/common/cryptoutil"
+	"github.com/spiffe/spire/pkg/common/x509svid"
 	"github.com/spiffe/spire/pkg/common/x509util"
 	"go.uber.org/zap"
 
@@ -23,11 +24,11 @@ import (
 )
 
 const (
-	// backdate = 10 * time.Second
+	backdate = 10 * time.Second
 
 	// DefaultX509CATTL is the TTL given to X509 CAs if not overridden by
 	// the server config.
-	DefaultX509CATTL = time.Hour * 24
+	// DefaultX509CATTL = time.Hour * 24
 
 	// DefaultX509SVIDTTL is the TTL given to X509 SVIDs if not overridden by
 	// the server config.
@@ -129,6 +130,13 @@ func NewCA(config Config) *CA {
 		config.Clock = clock.New()
 	}
 
+	if config.X509SVIDTTL <= 0 {
+		config.X509SVIDTTL = DefaultX509SVIDTTL
+	}
+	if config.JWTSVIDTTL <= 0 {
+		config.JWTSVIDTTL = DefaultJWTSVIDTTL
+	}
+
 	ca := &CA{
 		c: config,
 	}
@@ -221,8 +229,19 @@ func (ca *CA) SignWorkloadX509SVID(ctx context.Context, params WorkloadX509SVIDP
 
 	// calculate the notBefore and notAfter values for SVID
 	// we don't need chain right now but why not
-	parentChan := append([]*x509.Certificate{x509CA.Certificate}, x509CA.UpstreamChain...)
-	template.NotBefore, template.NotAfter = computeX509SVIDLifetime(ca.c.Clock, parentChan, params.TTL)
+	if params.TTL <= 0 {
+		params.TTL = ca.c.X509SVIDTTL
+	}
+	parentChain := append([]*x509.Certificate{x509CA.Certificate}, x509CA.UpstreamChain...)
+	template.NotBefore, template.NotAfter = computeCappedLifetime(ca.c.Clock.Now(), params.TTL, parentChainExpiration(parentChain))
+
+	// Append the unique ID to the subject, unless disabled
+	template.Subject.ExtraNames = append(template.Subject.ExtraNames, x509svid.UniqueIDAttribute(params.SPIFFEID))
+
+	if len(params.DNSNames) > 0 {
+		template.Subject.CommonName = params.DNSNames[0]
+		template.DNSNames = params.DNSNames
+	}
 
 	svidChain, err := ca.signX509SVID(x509CA, template)
 	if err != nil {
@@ -258,7 +277,8 @@ func (ca *CA) SignWorkloadJWTSVID(ctx context.Context, params WorkloadJWTSVIDPar
 	if ttl <= 0 {
 		ttl = ca.c.JWTSVIDTTL
 	}
-	_, expiresAt := computeCappedLifetime(ca.c.Clock, ttl, jwtKey.NotAfter)
+
+	_, expiresAt := computeCappedLifetime(now, ttl, jwtKey.NotAfter)
 
 	claims := map[string]interface{}{
 		"sub": params.SPIFFEID.String(),
@@ -316,15 +336,7 @@ func (ca *CA) signJWTSVID(jwtKey *JWTKey, claims map[string]interface{}) (string
 	return signedToken, nil
 }
 
-func computeX509SVIDLifetime(clock clock.Clock, parentChain []*x509.Certificate, ttl time.Duration) (notBefore, notAfter time.Time) {
-	if ttl <= 0 {
-		ttl = DefaultX509SVIDTTL
-	}
-	return computeCappedLifetime(clock, ttl, parentChainExpiration(parentChain))
-}
-
-func computeCappedLifetime(clk clock.Clock, ttl time.Duration, expirationCap time.Time) (notBefore, notAfter time.Time) {
-	now := clk.Now()
+func computeCappedLifetime(now time.Time, ttl time.Duration, expirationCap time.Time) (notBefore, notAfter time.Time) {
 	notBefore = now.Add(-NotBeforeCushion)
 	notAfter = now.Add(ttl)
 	if !expirationCap.IsZero() && notAfter.After(expirationCap) {
@@ -353,17 +365,14 @@ func dropEmptyValues(ss []string) []string {
 	return ss
 }
 
-func verifyTrustDomainMemberID(trustDomain spiffeid.TrustDomain, id spiffeid.ID) error {
-
+func verifyTrustDomainMemberID(td spiffeid.TrustDomain, id spiffeid.ID) error {
 	// Verify the SPIFFE ID is a member of the trust domain
-	if !id.MemberOf(trustDomain) {
-		return fmt.Errorf("invalid X509-SVID ID: %q is not a member of %q", id, trustDomain)
+	if !id.MemberOf(td) {
+		return fmt.Errorf("%q is not a member of trust domain %q", id, td)
 	}
-
 	// Verify the SPIFFE ID path is not empty
 	if id.Path() == "" {
-		return fmt.Errorf("invalid X509-SVID ID: missing SPIFFE ID path")
+		return fmt.Errorf("%q is not a member of trust domain %q; path is empty", id, td)
 	}
-
 	return nil
 }
